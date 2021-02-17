@@ -90,7 +90,7 @@ class U2NET(nn.Module):
         def unet(x, height=1):
             if height < 6:
                 x1 = getattr(self, f'stage{height}')(x)
-                x2 = unet(getattr(self, 'downsample')(x1), height + 1)
+                x2 = unet(self.downsample(x1), height + 1)
                 x = getattr(self, f'stage{height}d')(torch.cat((x2, x1), 1))
                 side(x, height)
                 return _upsample_like(x, sizes[height - 1]) if height > 1 else x
@@ -105,20 +105,17 @@ class U2NET(nn.Module):
             x = _upsample_like(x, sizes[1])
             maps.append(x)
 
-        def fuse():
-            # fuse saliency probability maps
-            maps.reverse()
-            x = torch.cat(maps, 1)
-            x = getattr(self, 'outconv')(x)
-            maps.insert(0, x)
-            return [torch.sigmoid(x) for x in maps]
-
         unet(x)
-        maps = fuse()
+        # fuse saliency probability maps
+        maps.reverse()
+        x = torch.cat(maps, 1)
+        x = self.outconv(x)
+        maps.insert(0, x)
+        maps = [torch.sigmoid(x) for x in maps]
         return maps
 
     def _make_layers(self, cfgs):
-        self.height = int((len(cfgs) + 1) / 2)
+        self.height = (len(cfgs) + 1) // 2
         self.add_module('downsample', nn.MaxPool2d(2, stride=2, ceil_mode=True))
         for k, v in cfgs.items():
             # build rsu block
